@@ -1,27 +1,21 @@
 == Meetup Recommendation Engine with Micronaut Federated Services
 
-Presentation: 
-
-
-
-----
-kafkacat -C -b broker:9092 -t rsvps -c 10
-----
+Presentation: https://www.dropbox.com/s/57luj0qyg2swjaz/Ad%20Astra%20with%20Micronaut.pdf?dl=0[Ad Astra with Micronaut (pdf)]
 
 === Resources:
 
-Micronaut Docs, 
-Guides (e.g. for cloud integrations, databases)
-My articles - part 1, part 2
-Awesome Micronaut
-Micronaut Getting Started
-GitHub repository Example Project
-Micronaut Workshop
-InfoQ series (part 1, part 2)
+* https://docs.micronaut.io/snapshhot/guide/index.html[Micronaut Docs]
+* https://guides.micronaut.io/[Guides] (e.g. for cloud integrations, databases)
+* My articles - https://medium.com/@mesirii/ad-astra-the-micronaut-framework-52ff2d684877[part 1], https://medium.com/@mesirii/cloud-native-with-micronaut-733c9784850f[part 2]
+* https://github.com/JonasHavers/awesome-micronaut[Awesome Micronaut]
+* https://medium.com/@jonashavers/getting-started-with-micronaut-595515985a98[Micronaut Getting Started]
+* https://alvarosanchez.github.io/micronaut-workshop/[Micronaut Workshop]
+* InfoQ series (https://www.infoq.com/articles/micronaut-tutorial-microservices-jvm[part 1], https://www.infoq.com/articles/micronaut-tracing-security-serverless[part 2])
 
 == Hello World
 
 ----
+sdk install java 1.0.0-rc-13-grl
 sdk install micronaut
 mn help
 
@@ -44,19 +38,172 @@ EOF
 
 
 curl "http://localhost:8080/hello/echo/Hello%20World"
+
+ab -n5000 -c2 http://localhost:8080/hello/echo/test
+
+# Docker Build
+docker build -t "test" .
+docker run -p 8080:8080 test:latest
+----
+
+== Native Image
+
+----
+mn create-app graal-test --features graal-native-image
+cd graal-test
+mn create-controller hello
+
+./build-native-image.sh 
+
+# Writing reflect.json file to destination: build/reflect.json
+# [graal-test:96082]    classlist:   3,493.79 ms
+# ...
+# Warning: class initialization of class io.netty.handler.ssl.JettyNpnSslEngine failed …
+# ...
+# [graal-test:96082]        write:   1,606.12 ms
+# [graal-test:96082]      [total]:  81,785.20 ms
+
+./graal-test
 ----
 
 == Demo Application
 
+* Federated Set of MicroServices
+* Async Fetch from Meetup-RSVP
+* Send to Kafka
+* Members in Postgres (reactive)
+* Events & RSVP in Neo4j
+* Groups & Topics in Mongo
+* Member, Group, Recommendation-Services
+* Discovery, Config, Tracing, Monitoring, Resiliency
+
+image::microservices.jpg[]
+
+Run infrastructure via `docker-compose` 
+
+link:./docker-compose.yml[]
+
 == Receiving Stream and Send to Kafka
 
-Meetup Rsvp Streaming API: 
+Meetup Rsvp Streaming API: https://stream.meetup.com/2/rsvps
+
+.example payload
+[source,javascript]
+----
+{ "response": "yes","guests": 0,
+  "rsvp_id": 1777141786,"mtime": 1552816747573,"visibility": "public",
+  "venue": {
+  	"venue_name": "4518 Innovation Dr","lon": -105.04565,"lat": 40.524513,"venue_id": 26220190
+  },
+  "member": {
+  	"member_id": 195627132,"member_name": "Brandon"
+  },
+  "event": {
+  	"event_name": "Rocky Mountain Archery!","event_id": "259473580","time": 1553216400000,
+  	"event_url": "https:\/\/www.meetup.com\/NoCo-Active-Introverts\/events\/259473580\/"
+  },
+  "group": {
+  	"group_topics": [{"urlkey": "camping","topic_name": "Camping"}],
+  	"group_id": 30952408,
+  	"group_name": "NoCo Active Introverts",
+  	"group_city": "Fort Collins","group_state": "CO","group_country": "us",
+  	"group_lon": -105.11,"group_lat": 40.58
+  }
+}
+----
+
+|===
+| Task | Command
+| Create a bunch of DTOs to hold the data
+| auto-transformation from JSON
+| Create an (reactive) HTTP client for the meetup API
+m| mn create-client rsvp
+| Create an Controller (for testing) that 
+m| mn create-controller rsvp
+| Create a Kafka Producer to send events to a topic
+m| mn create-bean rsvp-source
+| Create a scheduled Job to receive events and send to kafka
+m| mn create-job rsvp
+|===
+
+[source,java]
+----
+@KafkaClient(batch=true)
+public interface RsvpProducer {
+    @Topic("rsvps")
+    void sendRsvp(List<Rsvp> rsvps);
+}
+----
+
+[source,java]
+----
+@Singleton
+public class RsvpJob {
+    @Inject RsvpClient client;
+    @Inject RsvpSource source;
+	
+    @Scheduled(fixedRate = "5s")
+    public void process() {
+       client.index()
+	   .doOnNext(r -> source.send(r.rsvp_id, r));
+    }
+}
+----
+
+
+----
+
+----
+
+----
+kafkacat -C -b broker:9092 -t rsvps -c 10
+----
 
 == Storage
 
+* add feature flags for storage
+** cassandra, redis, neo4j, mongo, jpa, gorm, ...
+* consume and store filtered events from Kafka in Listeners
+* use reactive APIs where available
+* additional controllers to provide data to clients
+
+* users into Postgres
+* groups into MongoDB
+* rsvp and event into Neo4j
+
+=== MongoDB
+
+----
+mn create-app meetup-groups --features mongo-reactive,kafka
+----
+
+.MongoDB Listener
+----
+@KafkaListener(offsetReset = OffsetReset.EARLIEST)
+public class GroupListener {
+	
+    private final MongoClient mongoClient;
+
+    @Topic("rsvps")
+    public Mono<Success> receiveRsvp(
+                   @KafkaKey String id, Mono<Rsvp> rsvp) {
+        return rsvp.flatMap(r -> 
+          Flux.from(getCollection().insertOne(r.group)).next());
+    }
+}
+----
+
+=== Postgres
+
+TODO
 
 === Neo4j
 
+----
+mn create-app meetup-reco --features neo4j-bolt,kafka
+----
+
+[source,cypher]
 ----
 MERGE (e:Event {id:$rvsp.event.id}) ON CREATE SET e.time = $rsvp.event.time
 MERGE (g:Group {id:$rspv.group.id})
@@ -65,16 +212,68 @@ MERGE (u)-[:MEMBER_OF]->(g)
 MERGE (u)-[:ATTENDS]->(e);
 ----
 
+[source,java]
+----
+@KafkaListener(offsetReset = OffsetReset.EARLIEST)
+public class RsvpListener {
+	
+  @Inject Driver driver;
+
+  static String STATEMENT = "MERGE (e:Event {id:$rsvp.event_id}";
+	
+  @Topic("rsvps")
+  public Mono<Integer> receive(@KafkaKey String id, Mono<Rsvp> rsvp) {
+	    Session s = driver.session();
+        return rsvp.map(r -> s.writeTransaction(tx ->tx.run(STATEMENT,
+      parameters("rsvp",params(r))).consume().counters().nodesCreated()));
+    }
+}
+----
+
+image::neo4j-rsvps.jpg[]
+
 == Recommendation
 
+[source,cypher]
 ----
-MATCH (m:Member {id:$id})-[:ATTENDS]->()<-[:ATTENDS]-(u2:User)
-WITH u2, count(*) as freq ORDER BY freq DESC LIMIT 20
+MATCH (u:User {id:$id})-[:ATTENDS]->()<-[:ATTENDS]-(u2:User)
+// Most similar peers
+WITH u, u2, count(*) as sameEvent ORDER BY sameEvent DESC LIMIT 20
+// their future events
 MATCH (u2)-[:ATTENDS]->(e:Event)
-WHERE e.time > timestamp()
-RETURN e.id as event_id
-ORDER BY count(*) DESC LIMIT 10;
+WHERE e.time > timestamp() AND NOT (u)-[:ATTENDS]->(e)
+// top ranked events
+RETURN e.id as event_id, count(*) as eventFreq
+ORDER BY eventFreq DESC LIMIT 10;
 ----
+
+.Testing the service
+[source,bash]
+----
+curl http://localhost:8084/reco/193808772 | jq .
+[{"event_name": "Meet new friends with a Graduate Degree!
+                 (35 - 59) (FREE DRINK/HOSTED)",
+  "event_id": "259791109",
+  "time": 1553277600000
+},{"event_name": "11-Day Adventure to Quito & The Galapagos 
+                  Islands - 29th March 2019",
+    "event_id": "258058813",
+    "time": 1553886000000
+  },
+
+----
+
+=== CLI App
+
+TODO
+
+== Cloud Native
+
+=== Discovery & Configuration
+=== Resiliency
+=== Monitoring
+=== Tracing
+
 
 ////
 NOTES
