@@ -1,0 +1,5 @@
+profile: service
+defaultPackage: meetup.rsvp
+---
+testFramework: junit
+sourceLanguage: java

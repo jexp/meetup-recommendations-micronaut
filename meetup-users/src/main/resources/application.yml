@@ -1,0 +1,29 @@
+---
+micronaut:
+    application:
+        name: meetup-users
+    server:
+        port: 8083
+
+endpoints:
+    health:
+        enabled: true
+        sensitive: false
+        details-visible: ANONYMOUS
+    beans:
+        enabled: true
+        sensitive: false
+---
+kafka:
+    bootstrap:
+        servers: broker:9092
+---
+postgres:
+    reactive:
+        client:
+            port: 5432
+            host: postgres
+            database: meetup_users
+            user: postgres
+            password: test
+            # maxSize: 5

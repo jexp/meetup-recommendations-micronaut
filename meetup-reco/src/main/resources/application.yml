@@ -1,0 +1,16 @@
+---
+micronaut:
+    application:
+        name: meetup-reco
+    server:
+        port: 8084
+
+---
+kafka:
+    bootstrap:
+        servers: broker:9092
+---
+neo4j:
+  uri: bolt://neo4j
+  username: neo4j
+  password: test

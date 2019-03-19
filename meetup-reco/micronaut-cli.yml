@@ -1,0 +1,5 @@
+profile: service
+defaultPackage: meetup.reco
+---
+testFramework: junit
+sourceLanguage: java

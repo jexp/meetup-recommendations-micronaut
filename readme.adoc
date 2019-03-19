@@ -1,0 +1,207 @@
+== Meetup Recommendation Engine with Micronaut Federated Services
+
+Presentation: 
+
+
+
+----
+kafkacat -C -b broker:9092 -t rsvps -c 10
+----
+
+=== Resources:
+
+Micronaut Docs, 
+Guides (e.g. for cloud integrations, databases)
+My articles - part 1, part 2
+Awesome Micronaut
+Micronaut Getting Started
+GitHub repository Example Project
+Micronaut Workshop
+InfoQ series (part 1, part 2)
+
+== Hello World
+
+----
+sdk install micronaut
+mn help
+
+mn create-app test
+cd test
+mn create-service hello
+
+# edit HelloController.java and add
+
+cat << EOF
+@Get ("/echo/{text}")
+public Single<String> echo(String text) {
+    return Single.just(">" + text);
+}
+EOF
+
+./gradlew run
+# or
+./gradlew assemble && java -jar build/libs/test-all-0.1.0.jar
+
+
+curl "http://localhost:8080/hello/echo/Hello%20World"
+----
+
+== Demo Application
+
+== Receiving Stream and Send to Kafka
+
+Meetup Rsvp Streaming API: 
+
+== Storage
+
+
+=== Neo4j
+
+----
+MERGE (e:Event {id:$rvsp.event.id}) ON CREATE SET e.time = $rsvp.event.time
+MERGE (g:Group {id:$rspv.group.id})
+MERGE (u:User  {id:$rspv.user.id})
+MERGE (u)-[:MEMBER_OF]->(g)
+MERGE (u)-[:ATTENDS]->(e);
+----
+
+== Recommendation
+
+----
+MATCH (m:Member {id:$id})-[:ATTENDS]->()<-[:ATTENDS]-(u2:User)
+WITH u2, count(*) as freq ORDER BY freq DESC LIMIT 20
+MATCH (u2)-[:ATTENDS]->(e:Event)
+WHERE e.time > timestamp()
+RETURN e.id as event_id
+ORDER BY count(*) DESC LIMIT 10;
+----
+
+////
+NOTES
+
+micronaut presentation
+
+- what is the story?
+
+√ - theme ? space+small ? -> comets, pluto, how does the solar system move through the universe, thule, hubble, voyager, moon
+
+√ - why yet another java application framework - history
+TODO MORE - design considerations for micronaut
+- my personal impressions
+√ - wth is cloud native !?
+√ - 12factor
+- main areas
+- injection + compile time
+- startup time + size
+- reactive
+√ - http server/client -> can even share an interface
+√ - cloud native (orchestration/lookup, monitoring, tracing, )
+
+- streaming data (kafka)
+
+- need to add circuit breaker
+- isolation layer from meetup's API
+- as an example, only load "yes" rsvps into our system
+
+mn create-app meetup-users --features kafka,postgres-reactive
+
+- show health + monitoring endpoints
+
+
+mn create-app test-all-java --profile service --features annotation-api,cassandra,hibernate-gorm,hibernate-jpa,jdbc-dbcp,postgres-reactive,redis-lettuce,mongo-gorm,mongo-reactive,neo4j-bolt,neo4j-gorm,kafka,kafka-streams,rabbitmq,management,config-consul,discovery-consul,discovery-eureka,graal-native-image,java,http-client,http-server,jib,micrometer,micrometer-graphite,netflix-archaius,netflix-hystrix,netflix-ribbon,picocli,security-jwt,junit,spek,springloaded,jrebel,swagger-java,tracing-jaeger,tracing-zipkin
+
+curl localhost:8080/rsvp/users -d '{"name":"John","age":32}' -H content-type:application/json
+
+curl localhost:8081/rsvp/groups -d '{"id":124, "name":"Micronaut","topics":["frameworks","java","cloud"]}' -H content-type:application/json
+
+
+{"message":"Internal Server Error: An exception occurred when encoding using the AutomaticPojoCodec.\nEncoding a Group: 'meetup.groups.Group@675f8453' failed with the following exception:\n\nUnable to get value for property 'group_city' in Group\n\nA custom Codec or PojoCodec may need to be explicitly configured and registered to handle this type."}
+
+
+compile 'io.micronaut:micronaut-management'
+curl -i http://localhost:8082/health
+HTTP/1.1 503 Service Unavailable
+Date: Mon, 18 Mar 2019 21:12:45 GMT
+content-type: application/json
+content-length: 656
+connection: close
+
+{"name":"meetup-users","status":"DOWN","details":{"postgres-reactive":{"name":"meetup-users","status":"UP","details":{"version":"PostgreSQL 11.2 (Debian 11.2-1.pgdg90+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 6.3.0-18+deb9u1) 6.3.0 20170516, 64-bit"}},"compositeDiscoveryClient()":{"name":"meetup-users","status":"UP"},"diskSpace":{"name":"meetup-users","status":"UP","details":{"total":2000796545024,"free":1480417976320,"threshold":10485760}},"kafka":{"name":"meetup-users","status":"DOWN","details":{"error":"java.util.concurrent.ExecutionException: org.apache.kafka.common.errors.TimeoutException: Timed out waiting for a node assignment."}}}}
+
+
+
+- each of the microservices consumes RSVP events from the stream
+  - you could filter/alter/enrich them withing the Kafka infrastructure
+
+- stores the relevant domain entity in it's data storage
+- provides REST/GraphQL APIs to make them available to front/end or other services
+- offer value added services
+- for example event recommendations for a user
+
+
+MERGE (e:Event {id:$rvsp.event.id}) ON CREATE SET e.time = $rsvp.event.time
+MERGE (g:Group {id:$rspv.group.id})
+MERGE (u:User  {id:$rspv.user.id})
+MERGE (u)-[:MEMBER_OF]->(g)
+MERGE (u)-[:ATTENDS]->(e);
+
+MATCH (u:User {id:$id})-[:ATTENDS]->()<-[:ATTENDS]-(u2:User)
+WITH u2, count(*) as freq ORDER BY freq DESC LIMIT 20
+MATCH (u2)-[:ATTENDS]->(e:Event)
+WHERE e.time > timestamp()
+RETURN e.id as event_id
+ORDER BY count(*) DESC LIMIT 10;
+
+
+// todo if not exists postgres
+INSERT INTO USER values(user_id, ....);
+INSERT INTO USER_GROUPS values(user_id, group_id);
+
+Groups into mongo
+
+group + topics + venues
+
+- containers / aot
+
+- example
+
+- meetup.com -> website, show of hands, what is it, domain
+- rsvp streaming http endpoint -> our starting point
+- reactive consumer -> store as events in Redis?
+- send events to other services
+- group service: group, events
+- member service: people, interests
+- recommendation service -> rsvps, topology
+
+== Meetup Recommendations with Micronaut
+
+I want to show hands-on how to use the impressive list of cloud-native features that Micronaut offers in a practical scenario also demonstrating the simple programming model, well designed APIs and fast startup time.
+
+- what is Micronaut
+- when would I use it
+- what features are available for cloud native microservices and functions
+- how would I use them in practise
+
+req:
+Some experiences with building backend applications. 
+JVM experience would be helpful but not required.
+
+abstract:
+In an active open-source community, Meetups play an important part of pulling people interested in a tech topic together and foster exchange of ideas. In this talk, I want to show how to use Micronaut to build a fully federated solution based on the streaming RSVP API of meetup.com. We ingest the RSVP events with the reactive http client and make it available to our system via Kafka. To demonstrate the polyglot functionality in our event-sourced system, we will store events in Redis, members and groups in Postgres, and meetups and attendance in Neo4j.
+Each service can make its data available via reactive APIs, and on top of that, we're providing meetup recommendations for members with the built-in Neo4j integration.
+As a proper "cloud-native" application, we use Micronauts integrations for orchestration, tracing, monitoring while making sure that we are not affected by outages of our dependent APIs using CircuitBreakers and Retries.
+I hope that the talk gives you enough hands-on experience for building your own Micronaut-based applications.
+
+Note:
+
+This is a more practical talk that shows how to apply the built-in cloud-native features that Micronaut brings to the table.
+I've been interacting with the Micronaut Team at OCI since the early days of the framework in the beginning of 2018.
+
+I already published two print articles about the topic (in German) which are available in English here:
+
+* https://medium.com/@mesirii/ad-astra-the-micronaut-framework-52ff2d684877
+* https://medium.com/@mesirii/cloud-native-with-micronaut-733c9784850f
+
+
+
+////

@@ -1,0 +1,11 @@
+---
+micronaut:
+    application:
+        name: meetup-rsvp
+    server:
+        port: 8081
+        
+---
+kafka:
+    bootstrap:
+        servers: broker:9092
