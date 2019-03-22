@@ -4,6 +4,8 @@ micronaut:
         name: meetup-users
     server:
         port: 8083
+    metrics:
+        enabled: true
 
 endpoints:
     health:
@@ -13,7 +15,15 @@ endpoints:
     beans:
         enabled: true
         sensitive: false
+
+consul:
+    client:
+        registration:
+            enabled: true
+    defaultZone: "${CONSUL_HOST:localhost}:${CONSUL_PORT:8500}"
+    
 ---
+        
 kafka:
     bootstrap:
         servers: broker:9092
@@ -27,3 +37,8 @@ postgres:
             user: postgres
             password: test
             # maxSize: 5
+tracing:
+    zipkin:
+        enabled: true
+        http:
+            url: http://localhost:9411

@@ -4,7 +4,9 @@ micronaut:
         name: meetup-rsvp
     server:
         port: 8081
-        
+
+app:
+    meetup-url: https://stream.meetup.com/2/   
 ---
 kafka:
     bootstrap:

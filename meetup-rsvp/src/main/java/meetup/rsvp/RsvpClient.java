@@ -6,7 +6,7 @@ import io.micronaut.http.HttpStatus;
 import io.micronaut.retry.annotation.*;
 import reactor.core.publisher.*;
 
-@Client("https://stream.meetup.com/2/")
+@Client("${app.meetup-url}")
 @CircuitBreaker(reset = "30s")
 public interface RsvpClient {
 

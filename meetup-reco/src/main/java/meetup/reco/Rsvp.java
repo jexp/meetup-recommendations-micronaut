@@ -31,6 +31,8 @@ public class Rsvp {
    public String event_url;
    public Event() {}
    public Event(String id, String name, Long time) { this.event_id = id; this.event_name = name; this.time = time;}
+   public Member member;
+   public Event withMember(Member m) { this.member = m; return this;}
 }
 class Group {
 public List<GroupTopic> group_topics;

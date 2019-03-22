@@ -14,3 +14,17 @@ neo4j:
   uri: bolt://neo4j
   username: neo4j
   password: test
+  
+consul:
+  client:
+    registration:
+      enabled: true
+    defaultZone: "${CONSUL_HOST:localhost}:${CONSUL_PORT:8500}"
+
+tracing:
+    zipkin:
+        enabled: true
+        http:
+            url: http://localhost:9411
+        sampler:
+            probability: 1

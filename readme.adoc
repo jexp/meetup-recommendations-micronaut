@@ -126,6 +126,19 @@ m| mn create-bean rsvp-source
 m| mn create-job rsvp
 |===
 
+
+.declarative HTTP client
+[source,java]
+----
+@Client("${app.meetup-url}")
+@CircuitBreaker(reset = "30s")
+public interface RsvpClient {
+
+    @Get("/rsvps")
+    public Flux<Rsvp> index();
+}
+----
+
 [source,java]
 ----
 @KafkaClient(batch=true)
@@ -150,11 +163,6 @@ public class RsvpJob {
 }
 ----
 
-
-----
-
-----
-
 ----
 kafkacat -C -b broker:9092 -t rsvps -c 10
 ----
@@ -162,7 +170,7 @@ kafkacat -C -b broker:9092 -t rsvps -c 10
 == Storage
 
 * add feature flags for storage
-** cassandra, redis, neo4j, mongo, jpa, gorm, ...
+** neo4j, mongo, postgres, jpa, redis, gorm, ...
 * consume and store filtered events from Kafka in Listeners
 * use reactive APIs where available
 * additional controllers to provide data to clients
@@ -270,9 +278,189 @@ TODO
 == Cloud Native
 
 === Discovery & Configuration
+
+Discovery with Consul
+
+All applications are registered by their name at startup and deregistered at shutdown.
+
+They are automatically looked up by named client `@Client("myservice")` or ApplicationContext/Injection.
+
+Also integrate in health endpoint and metrics.
+
+
+----
+docker run -p 8500:8500 consul 
+----
+
+[source,yaml]
+----
+consul:
+  client:
+    registration:
+      enabled: true
+    defaultZone: "${CONSUL_HOST:localhost}:${CONSUL_PORT:8500}"
+----
+
+[source,java]
+----
+@Client("meetup-users")
+public interface UserClient {
+
+    @Get("/user/{id}")
+    public Single<Member> member(Integer id);
+}
+----
+
+[source,java]
+----
+@Inject UserClient users;
+
+
+users.member(user).map( m -> ...);
+----
+
+Configuration `"${my.conf.some-value}"` injected from config, or config server.
+
+----
+app:
+    meetup-url: https://stream.meetup.com/2/   
+----
+
+image::consul-discovery.jpg[]
+
+
 === Resiliency
+
+Using `@CircuitBreaker` on remote clients.
+
+[source,java]
+----
+@Client("${app.meetup-url}")
+@CircuitBreaker(reset = "30s")
+public interface RsvpClient {
+
+    @Get("/rsvps")
+    public Flux<Rsvp> index();
+}
+----
+
 === Monitoring
+
+Enable management with `--features management`
+
+----
+endpoints:
+    health:
+        enabled: true
+# relax security only for demo
+        sensitive: false
+        details-visible: ANONYMOUS
+    beans:
+        enabled: true
+        sensitive: false
+----
+
+That also enables health endpoint which is a composite set  of health-indicators whose compound status determines the healt-status.
+
+Example: DOWN <= UP + UP + DOWN + UP
+
+----
+curl http://localhost:8083/health | jq .
+
+
+{
+  "name": "meetup-users",
+  "status": "DOWN",
+  "details": {
+    "postgres-reactive": {
+      "name": "meetup-users",
+      "status": "UP",
+      "details": {
+        "version": "PostgreSQL 11.2 (Debian 11.2-1.pgdg90+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 6.3.0-18+deb9u1) 6.3.0 20170516, 64-bit"
+      }
+    },
+    "compositeDiscoveryClient(consul)": {
+      "name": "meetup-users",
+      "status": "UP",
+      "details": {
+        "services": {
+          "meetup-users": [
+            "http://localhost:8083"
+          ],
+          "meetup-reco": [
+            "http://localhost:8084"
+          ],
+          "consul": [
+            "http://localhost:8500"
+          ]
+        }
+      }
+    },
+    "diskSpace": {
+      "name": "meetup-users",
+      "status": "UP",
+      "details": {
+        "total": 2000796545024,
+        "free": 1460165070848,
+        "threshold": 10485760
+      }
+    },
+    "kafka": {
+      "name": "meetup-users",
+      "status": "DOWN",
+      "details": {
+        "brokerId": "1",
+        "clusterId": "aW-uv1gkTymlMwcjHnHpSA",
+        "nodes": 1
+      }
+    },
+    "consul": {
+      "name": "meetup-users",
+      "status": "UP",
+      "details": {
+        "leader": "\"127.0.0.1:8300\"\n"
+      }
+    }
+  }
+}
+----
+
 === Tracing
+
+Enable tracing `--features tracing-zipkin`
+
+----
+docker run -p "9411:9411" openzipkin/zipkin
+----
+
+It is  only sampled at a low rate, if you want to see it in a demo you have to increase the probability.
+
+[source,yaml]
+----
+tracing:
+    zipkin:
+        enabled: true
+        http:
+            url: http://localhost:9411
+        sampler:
+            probability: 1
+----
+
+Then you can annotate (for additional metadata) methods and parameters with annotations to create `@NewSpan` or continue `@ContinueSpan` spans, parameters can be transferred to the tracing with `@SpanParam`.
+
+
+[source,java]
+----
+@Get("/{user}")
+@NewSpan("meetup.reco")
+public Flowable<Event> recommend(@SpanTag("user.id") Integer user) {
+    return
+    users.member(user).flatMapPublisher(m -> 
+      Flowable.fromIterable(driver.session().run(RECO_STATEMENT, Values.parameters("id",user)).list()).map(this::event).map(e -> e.withMember(m)));
+}
+----
+
+image::zipkin-tracing.jpg[]
 
 
 ////
