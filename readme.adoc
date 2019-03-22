@@ -1,5 +1,7 @@
 == Meetup Recommendation Engine with Micronaut Federated Services
 
+image::presentation.jpg[]
+
 Presentation: https://www.dropbox.com/s/57luj0qyg2swjaz/Ad%20Astra%20with%20Micronaut.pdf?dl=0[Ad Astra with Micronaut (pdf)]
 
 === Resources:
