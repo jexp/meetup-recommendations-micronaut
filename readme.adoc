@@ -203,7 +203,43 @@ public class GroupListener {
 
 === Postgres
 
-TODO
+`--features postgres-reactive`
+
+Listen to Kafka and insert into Postgres.
+
+.UserListener.java
+[source,java]
+----
+@Inject PgPool client;
+
+@Topic("rsvps")
+public Single<Integer> receiveRsvp(@KafkaKey String id, Single<Rsvp> event) {
+   return event.map(rsvp -> rsvp.member).flatMap( m ->
+     client.rxBegin()
+     .flatMap(tx -> 
+      tx.rxPreparedQuery("INSERT INTO members VALUES ($1,$2,$3)",Tuple.of((int)m.member_id, m.member_name, m.photo)).map(r -> r.rowCount())
+      .doAfterTerminate(tx::commit)
+	));
+}
+----
+
+.UserController.java
+[source,java]
+----
+@Inject PgPool client;
+
+@Get("/{id}")
+public Single<Member> member(Integer id) {
+    return client.rxBegin().flatMap(tx ->
+            tx.rxPreparedQuery("SELECT * FROM members WHERE member_id = $1 LIMIT 1", Tuple.of(id)).map(
+                    result -> {
+                        PgIterator it = result.iterator();
+                        if (!it.hasNext()) return null;
+                        Row row = it.next();
+                        return new Member(row.getLong("member_id"), row.getString("member_name"), row.getString("photo"));
+                    }));
+}
+----
 
 === Neo4j
 
